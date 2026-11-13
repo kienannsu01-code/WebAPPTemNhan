@@ -80,13 +80,18 @@ let log = JSON.parse(localStorage.getItem('log') || '[]');
 const saveLog = () => localStorage.setItem('log', JSON.stringify(log.slice(-200)));
 
 async function loadOrders() {
-  if (GS_URL.startsWith('DAN_') || !$('tok').value) return fillStyles();
+  if (GS_URL.startsWith('DAN_')) { fillStyles(); return msg('Chưa điền GS_URL trong file index.html'); }
+  if (!$('tok').value) { fillStyles(); return msg('Hãy nhập mã bảo vệ trong Cài đặt'); }
   try {
     const r = await fetch(GS_URL + '?action=orders&token=' + encodeURIComponent($('tok').value));
-    const j = await r.json();
-    if (j.ok) { orders = j.orders; localStorage.setItem('orders', JSON.stringify(orders)); msg('Đã cập nhật ' + orders.length + ' đơn'); }
-    else msg('Mã bảo vệ chưa đúng');
-  } catch (e) { msg('Không có mạng, dùng danh sách đơn đã lưu'); }
+    let j;
+    try { j = await r.json(); }
+    catch (e) { fillStyles(); return msg('Script không trả về dữ liệu: kiểm tra URL /exec, quyền "Bất kỳ ai" và đã triển khai phiên bản mới'); }
+    if (j.ok) {
+      orders = j.orders; localStorage.setItem('orders', JSON.stringify(orders));
+      msg(orders.length ? 'Đã cập nhật ' + orders.length + ' đơn' : 'Tab Order không có dòng dữ liệu nào');
+    } else msg(j.error === 'token' ? 'Mã bảo vệ chưa đúng' : 'Lỗi từ script: ' + j.error);
+  } catch (e) { msg('Không kết nối được (mạng hoặc URL sai), dùng danh sách đã lưu'); }
   fillStyles();
 }
 function fillStyles() {
