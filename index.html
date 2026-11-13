@@ -15,6 +15,10 @@
   .it{background:#fff;border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:13px;word-break:break-all}
   .ok{color:#0a7a2f}.no{color:#c0392b}
   details{margin-bottom:10px}
+  #cur{background:#e8f0fe;border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:14px}
+  .r{background:#fff;border:1px solid #bbb;border-radius:8px;padding:10px;margin-bottom:6px;font-size:15px}
+  .r:active{background:#e8f0fe}
+  #res{margin-bottom:8px}
 </style>
 </head>
 <body>
@@ -27,6 +31,9 @@
   <label><input id="stamp" type="checkbox" checked style="width:auto"> Đóng dấu Style/PO/ngày giờ lên ảnh</label>
 </details>
 
+<div id="cur">Chưa chọn đơn</div>
+<input id="q" placeholder="Tìm PO hoặc Style (gõ vài ký tự)" autocomplete="off">
+<div id="res"></div>
 <select id="style"><option value="">-- Chọn Style --</option></select>
 <select id="po"><option value="">-- Chọn PO / Ngày giao --</option></select>
 <select id="cat"></select>
@@ -106,9 +113,59 @@ function fillPOs() {
   orders.forEach((o, i) => { if (o.style === $('style').value) $('po').add(new Option(`${o.po} — ${o.date || 'chưa có ngày giao'}`, i)); });
   const i = orders.findIndex(o => o.style === $('style').value && `${o.po}|${o.date}` === keep);
   if (i >= 0) $('po').value = i;
+  showCur();
 }
 $('style').onchange = () => { localStorage.setItem('style', $('style').value); localStorage.removeItem('pokey'); fillPOs(); };
-$('po').onchange = () => { const o = orders[$('po').value]; if (o) localStorage.setItem('pokey', `${o.po}|${o.date}`); };
+$('po').onchange = () => { const o = orders[$('po').value]; if (o) { localStorage.setItem('pokey', `${o.po}|${o.date}`); pushRecent(o); } showCur(); };
+
+// ---- Tìm và chọn PO ----
+const strip = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase();
+const esc = s => String(s || '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const okey = o => `${o.style}|${o.po}|${o.date}`;
+function pushRecent(o) {
+  const r = JSON.parse(localStorage.getItem('recent') || '[]').filter(k => k !== okey(o));
+  r.unshift(okey(o));
+  localStorage.setItem('recent', JSON.stringify(r.slice(0, 6)));
+}
+function showCur() {
+  const o = orders[$('po').value];
+  $('cur').textContent = o ? `Đang chọn: ${o.style} / PO ${o.po} / giao ${o.date || 'chưa có ngày'}` : 'Chưa chọn đơn';
+}
+function selectOrder(i) {
+  const o = orders[i];
+  if (!o) return;
+  localStorage.setItem('style', o.style);
+  localStorage.setItem('pokey', `${o.po}|${o.date}`);
+  $('style').value = o.style; fillPOs();
+  $('po').value = i; pushRecent(o); showCur();
+}
+function searchOrders() {
+  const terms = strip($('q').value).split(/\s+/).filter(Boolean);
+  let idx, title = '';
+  if (terms.length) {
+    idx = orders.map((o, i) => i).filter(i => {
+      const h = strip(`${orders[i].po} ${orders[i].style} ${orders[i].date}`);
+      return terms.every(t => h.includes(t));
+    });
+  } else {
+    const r = JSON.parse(localStorage.getItem('recent') || '[]');
+    idx = r.map(k => orders.findIndex(o => okey(o) === k)).filter(i => i >= 0);
+    if (idx.length) title = 'Đơn chọn gần đây';
+  }
+  const total = idx.length;
+  idx = idx.slice(0, 20);
+  $('res').innerHTML =
+    (title ? `<div style="font-size:13px;color:#555;margin-bottom:4px">${title}</div>` : '') +
+    idx.map(i => `<div class="r" data-i="${i}"><b>PO ${esc(orders[i].po)}</b> — ${esc(orders[i].style)}<br><small>Giao: ${esc(orders[i].date) || 'chưa có ngày'}</small></div>`).join('') +
+    (total > 20 ? `<div style="font-size:13px">Còn ${total - 20} kết quả nữa, gõ thêm để lọc</div>` : '') +
+    (terms.length && !total ? '<div style="font-size:14px">Không tìm thấy đơn nào</div>' : '');
+}
+$('q').oninput = searchOrders;
+$('q').onfocus = searchOrders;
+$('res').onclick = e => {
+  const d = e.target.closest('.r');
+  if (d) { selectOrder(+d.dataset.i); $('q').value = ''; $('res').innerHTML = ''; }
+};
 
 // ---- Chụp ----
 $('file').onchange = async e => {
